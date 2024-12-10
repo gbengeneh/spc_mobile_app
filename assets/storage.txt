@@ -1,0 +1,591 @@
+create
+or replace function public.handle_new_user() returns trigger as $$
+begin
+  if new.raw_user_meta_data->>'avatar_url' is null or new.raw_user_meta_data->>'avatar' = '' then
+  new.raw_user_meta_data = jsonb_set(new.raw_user_meta_data, '{avatar_url}', '"https://pixabay.com/vectors/man-human-silhouette-avatar-people-5354308/"' ::jsonb);
+  end if;
+  insert into pulic.users (id, email, address, phone, avatar_url)
+  values(new.id, new.email, new.address, new.phone, new.raw_user_meta_data->>'avatar_url');
+  return new;
+  end;
+$$ language plpgsql security definer;
+
+
+
+
+import { View, Text, StyleSheet, ImageBackground, TextInput, TouchableOpacity } from "react-native";
+import { useForm, Controller } from 'react-hook-form';
+import * as zod from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Redirect, Stack } from "expo-router";
+import { supabase } from "../lib/supabase";
+import { Toast } from "react-native-toast-notifications";
+import { useAuth } from "../providers/auth-provider";
+
+const authSchema = zod.object({
+    email: zod.string().email({ message: 'Invalid email address' }),
+    password: zod.string().min(8, { message: 'Password must be at least 8 characters long' }),
+    address: zod.string().min(5, { message: 'Address must be at least 5 characters long' }),
+    phone: zod.string().regex(/^\d{10,15}$/, { message: 'Invalid phone number' }),
+});
+
+
+export default function Auth() {
+
+    const { session } = useAuth();
+    if (session) return <Redirect href='/' />;
+
+    const { control, handleSubmit, formState } = useForm({
+        resolver: zodResolver(authSchema),
+        defaultValues: {
+            email: '',
+            password: '',
+            address: '',
+            phone: '',
+        },
+    });
+
+
+    const signIn = async (data: zod.infer<typeof authSchema>) => {
+        const { error } = await supabase.auth.signInWithPassword(data);
+
+        if (error) {
+            alert(error.message);
+        } else {
+            Toast.show('Signed in Successfully', {
+                type: 'success',
+                placement: 'top',
+                duration: 1500,
+            });
+        }
+    };
+    const signUp = async (data: zod.infer<typeof authSchema>) => {
+        const { email, password, address, phone } = data;
+    
+        // Sign up the user with email and password
+        const { error, data: authData } = await supabase.auth.signUp({
+            email,
+            password,
+        });
+    
+        if (error) {
+            alert(error.message);
+        } else {
+            // Store additional user data in a separate table
+            const { error: insertError } = await supabase.from('users').insert({
+                email,
+                address,
+                phone,
+            });
+    
+            if (insertError) {
+                alert(insertError.message);
+            } else {
+                Toast.show('Signed Up Successfully', {
+                    type: 'success',
+                    placement: 'top',
+                    duration: 1500,
+                });
+            }
+        }
+    };
+    
+    return (
+        <ImageBackground
+            source={{
+                uri: 'https://images.pexels.com/photos/682933/pexels-photo-682933.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
+
+            }}
+            style={styles.backgroundImage}
+        >
+
+            <View style={styles.overlay} />
+            <Stack.Screen options={{ headerShown: false }} />
+            <View style={styles.container} >
+                <Text style={styles.title}> Welcome</Text>
+                <Text style={styles.subtitle}>Please Authenticate to continue</Text>
+                <Controller
+                    control={control}
+                    name='email'
+                    render={({
+                        field: { value, onChange, onBlur },
+                        fieldState: { error },
+                    }) => (
+                        <>
+                            <TextInput
+                                placeholder='email'
+                                style={styles.input}
+                                value={value}
+                                onChangeText={onChange}
+                                onBlur={onBlur}
+                                placeholderTextColor='#aaa'
+                                autoCapitalize="none"
+                                editable={!formState.isSubmitting}
+                            />
+                            {error && <Text style={styles.error}>{error.message}</Text>}
+                        </>
+                    )}
+                />
+                <Controller
+                    control={control}
+                    name='password'
+                    render={({
+                        field: { value, onChange, onBlur },
+                        fieldState: { error },
+                    }) => (
+                        <>
+                            <TextInput
+                                placeholder='password'
+                                style={styles.input}
+                                value={value}
+                                onChangeText={onChange}
+                                onBlur={onBlur}
+                                secureTextEntry
+                                placeholderTextColor='#aaa'
+                                autoCapitalize="none"
+                                editable={!formState.isSubmitting}
+                            />
+                            {error && <Text style={styles.error}>{error.message}</Text>}
+                        </>
+                    )}
+                />
+                <Controller
+                    control={control}
+                    name="address"
+                    render={({
+                        field: { value, onChange, onBlur },
+                        fieldState: { error },
+                    }) => (
+                        <>
+                            <TextInput
+                                placeholder="Address"
+                                style={styles.input}
+                                value={value}
+                                onChangeText={onChange}
+                                onBlur={onBlur}
+                                placeholderTextColor="#aaa"
+                                editable={!formState.isSubmitting}
+                            />
+                            {error && <Text style={styles.error}>{error.message}</Text>}
+                        </>
+                    )}
+                />
+
+                <Controller
+                    control={control}
+                    name="phone"
+                    render={({
+                        field: { value, onChange, onBlur },
+                        fieldState: { error },
+                    }) => (
+                        <>
+                            <TextInput
+                                placeholder="Phone"
+                                style={styles.input}
+                                value={value}
+                                onChangeText={onChange}
+                                onBlur={onBlur}
+                                placeholderTextColor="#aaa"
+                                keyboardType="phone-pad"
+                                editable={!formState.isSubmitting}
+                            />
+                            {error && <Text style={styles.error}>{error.message}</Text>}
+                        </>
+                    )}
+                />
+
+                <TouchableOpacity
+                    style={styles.button}
+                    onPress={handleSubmit(signIn)}
+                    disabled={formState.isSubmitting}
+                >
+                    <Text style={styles.buttonText}>Sign In</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.button, styles.signUpButton]}
+                    onPress={handleSubmit(signUp)}
+                    disabled={formState.isSubmitting}
+                >
+                    <Text style={styles.buttonText}>Sign Up</Text>
+                </TouchableOpacity>
+            </View>
+        </ImageBackground>
+    )
+}
+
+const styles = StyleSheet.create({
+    backgroundImage: {
+        flex: 1,
+        resizeMode: 'cover',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    overlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+    },
+    container: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 16,
+        width: '100%',
+    },
+    title: {
+        fontSize: 36,
+        fontWeight: 'bold',
+        color: '#fff',
+        marginBottom: 8,
+    },
+    subtitle: {
+        fontSize: 18,
+        color: '#ddd',
+        marginBottom: 32,
+    },
+    input: {
+        width: '90%',
+        padding: 12,
+        marginBottom: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        borderRadius: 8,
+        fontSize: 16,
+        color: '#000',
+    },
+    button: {
+        backgroundColor: '#6a1b9a',
+        padding: 16,
+        borderRadius: 8,
+        marginBottom: 16,
+        width: '90%',
+        alignItems: 'center',
+    },
+    signUpButton: {
+        backgroundColor: 'transparent',
+        borderColor: '#fff',
+        borderWidth: 1,
+    },
+    signUpButtonText: {
+        color: '#fff',
+    },
+    buttonText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#fff',
+    },
+    error: {
+        color: 'red',
+        fontSize: 12,
+        marginBottom: 16,
+        textAlign: 'left',
+        width: '90%',
+    },
+    toggleText: {
+        color: "#fff",
+        textDecorationLine: "underline",
+        marginTop: 8,
+    },
+});
+
+
+import React, { useState } from "react";
+import {
+    View,
+    Text,
+    StyleSheet,
+    ImageBackground,
+    TextInput,
+    TouchableOpacity,
+} from "react-native";
+import { useForm, Controller } from "react-hook-form";
+import * as zod from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Redirect, Stack } from "expo-router";
+import { supabase } from "../lib/supabase";
+import { Toast } from "react-native-toast-notifications";
+import { useAuth } from "../providers/auth-provider";
+
+// Schema Definitions
+const signInSchema = zod.object({
+    email: zod.string().email({ message: "Invalid email address" }),
+    password: zod
+        .string()
+        .min(8, { message: "Password must be at least 8 characters long" }),
+});
+
+const signUpSchema = signInSchema.extend({
+    address: zod
+        .string()
+        .min(5, { message: "Address must be at least 5 characters long" }),
+    phone: zod
+        .string()
+        .regex(/^\d{10,15}$/, { message: "Invalid phone number" }),
+});
+
+export default function Auth() {
+    const { session } = useAuth();
+    if (session) return <Redirect href="/" />;
+
+    const [isSignUp, setIsSignUp] = useState(false);
+
+    // Initialize useForm with dynamic schema based on mode
+    const {
+        control,
+        handleSubmit,
+        formState: { errors, isSubmitting },
+    } = useForm({
+        resolver: zodResolver(isSignUp ? signUpSchema : signInSchema),
+    });
+
+    // Sign-In Function
+    const signIn = async (data: zod.infer<typeof signInSchema>) => {
+        const { error } = await supabase.auth.signInWithPassword(data);
+        if (error) {
+            alert(error.message);
+        } else {
+            Toast.show("Signed in Successfully", {
+                type: "success",
+                placement: "top",
+                duration: 1500,
+            });
+        }
+    };
+
+    // Sign-Up Function
+    const signUp = async (data: zod.infer<typeof signUpSchema>) => {
+        const { email, password, address, phone } = data;
+
+        const { error } = await supabase.auth.signUp({
+            email,
+            password,
+        });
+
+        if (error) {
+            alert(error.message);
+        } else {
+            const { error: insertError } = await supabase
+                .from("users")
+                .insert({
+                    email,
+                    address,
+                    phone,
+                });
+
+            if (insertError) {
+                alert(insertError.message);
+            } else {
+                Toast.show("Signed Up Successfully", {
+                    type: "success",
+                    placement: "top",
+                    duration: 1500,
+                });
+            }
+        }
+    };
+
+    return (
+        <ImageBackground
+            source={{
+                uri: "https://images.pexels.com/photos/682933/pexels-photo-682933.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
+            }}
+            style={styles.backgroundImage}
+        >
+            <View style={styles.overlay} />
+            <Stack.Screen options={{ headerShown: false }} />
+            <View style={styles.container}>
+                <Text style={styles.title}>{isSignUp ? "Sign Up" : "Sign In"}</Text>
+                <Text style={styles.subtitle}>
+                    {isSignUp
+                        ? "Create an account to continue"
+                        : "Please authenticate to continue"}
+                </Text>
+
+                {/* Email Field */}
+                <Controller
+                    control={control}
+                    name="email"
+                    render={({ field: { value, onChange, onBlur },
+                        fieldState: { error }, }) => (
+                        <>
+                            <TextInput
+                                placeholder="Email"
+                                style={styles.input}
+                                value={value}
+                                onChangeText={onChange}
+                                onBlur={onBlur}
+                                placeholderTextColor="#aaa"
+                                autoCapitalize="none"
+                                editable={!isSubmitting}
+                            />
+                            {error && <Text style={styles.error}>{error.message}</Text>}
+                        </>
+                    )}
+                />
+
+                {/* Password Field */}
+                <Controller
+                    control={control}
+                    name="password"
+                    render={({
+                        field: { value, onChange, onBlur },
+                        fieldState: { error },
+                    }) => (
+                        <>
+                            <TextInput
+                                placeholder="Password"
+                                style={styles.input}
+                                value={value}
+                                onChangeText={onChange}
+                                onBlur={onBlur}
+                                secureTextEntry
+                                placeholderTextColor="#aaa"
+                                autoCapitalize="none"
+                                editable={!isSubmitting}
+                            />
+                            {error && <Text style={styles.error}>{error.message}</Text>}
+                        </>
+                    )}
+                />
+
+                {/* Additional Fields for Sign-Up */}
+                {isSignUp && (
+                    <>
+                        <Controller
+                            control={control}
+                            name="address"
+                            render={({ field: { value, onChange, onBlur }, 
+                                fieldState: { error }, }) => (
+                                <>
+                                    <TextInput
+                                        placeholder="Address"
+                                        style={styles.input}
+                                        value={value}
+                                        onChangeText={onChange}
+                                        onBlur={onBlur}
+                                        placeholderTextColor="#aaa"
+                                        editable={!isSubmitting}
+                                    />
+                                    {error && (
+                                        <Text style={styles.error}>{error.message}</Text>
+                                    )}
+                                </>
+                            )}
+                        />
+
+                        <Controller
+                            control={control}
+                            name="phone"
+                            render={({ field: { value, onChange, onBlur },
+                                fieldState: { error }, }) => (
+                                <>
+                                    <TextInput
+                                        placeholder="Phone"
+                                        style={styles.input}
+                                        value={value}
+                                        onChangeText={onChange}
+                                        onBlur={onBlur}
+                                        keyboardType="phone-pad"
+                                        placeholderTextColor="#aaa"
+                                        editable={!isSubmitting}
+                                    />
+                                    {error && <Text style={styles.error}>{error.message}</Text>}
+                                </>
+                            )}
+                        />
+                    </>
+                )}
+
+                <TouchableOpacity
+                    style={styles.button}
+                    onPress={handleSubmit(isSignUp ? signUp : signIn)}
+                    disabled={isSubmitting}
+                >
+                    <Text style={styles.buttonText}>{isSignUp ? "Sign Up" : "Sign In"}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    onPress={() => setIsSignUp(!isSignUp)}
+                    disabled={isSubmitting}
+                >
+                    <Text style={styles.toggleText}>
+                        {isSignUp
+                            ? "Already have an account? Sign In"
+                            : "Don't have an account? Sign Up"}
+                    </Text>
+                </TouchableOpacity>
+            </View>
+        </ImageBackground>
+    );
+}
+
+const styles = StyleSheet.create({
+    backgroundImage: {
+        flex: 1,
+        resizeMode: 'cover',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    overlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+    },
+    container: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 16,
+        width: '100%',
+    },
+    title: {
+        fontSize: 36,
+        fontWeight: 'bold',
+        color: '#fff',
+        marginBottom: 8,
+    },
+    subtitle: {
+        fontSize: 18,
+        color: '#ddd',
+        marginBottom: 32,
+    },
+    input: {
+        width: '90%',
+        padding: 12,
+        marginBottom: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        borderRadius: 8,
+        fontSize: 16,
+        color: '#000',
+    },
+    button: {
+        backgroundColor: '#6a1b9a',
+        padding: 16,
+        borderRadius: 8,
+        marginBottom: 16,
+        width: '90%',
+        alignItems: 'center',
+    },
+    signUpButton: {
+        backgroundColor: 'transparent',
+        borderColor: '#fff',
+        borderWidth: 1,
+    },
+    signUpButtonText: {
+        color: '#fff',
+    },
+    buttonText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#fff',
+    },
+    error: {
+        color: 'red',
+        fontSize: 12,
+        marginBottom: 16,
+        textAlign: 'left',
+        width: '90%',
+    },
+    toggleText: {
+        color: "#fff",
+        textDecorationLine: "underline",
+        marginTop: 8,
+    },
+});
